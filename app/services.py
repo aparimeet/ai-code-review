@@ -1,16 +1,12 @@
 import asyncio
-import json
 import logging
 from typing import List, Dict, Any, Optional
-from certifi import contents
 import httpx
-import openai
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 from .config import GITLAB_TOKEN, GITLAB_URL, OPENAI_API_KEY, AI_MODEL
 
 logger = logging.getLogger(__name__)
-openai.api_key = OPENAI_API_KEY
 
 GITLAB_HEADERS = {
     "Private-Token": GITLAB_TOKEN,
@@ -50,7 +46,9 @@ async def fetch_raw_file(project_id: int, file_path: str, ref: str) -> Optional[
     GET /projects/:id/repository/files/:file_path/raw?ref=<ref>
     file_path must be URL encoded
     """
-    encoded_path = quote_plus(file_path)
+    # GitLab expects the file_path in the URL path to be fully URL-encoded
+    # including slashes. Use quote with safe="" to encode '/'.
+    encoded_path = quote(file_path, safe="")
     url = f"{GITLAB_URL}/projects/{project_id}/repository/files/{encoded_path}/raw"
     params = {"ref": ref}
     async with httpx.AsyncClient() as client:
@@ -81,7 +79,7 @@ def build_messages(old_files: List[Dict[str, str]], diffs: List[Dict[str, Any]])
     diffs: list of diff objects, with property 'diff' (unidiff string)
     """
     user_content = []
-    user_content.append("Files before changes (for contexnt):")
+    user_content.append("Files before changes (for context):")
     for f in old_files:
         content = truncate_text(f.get("fileContent", ""), MAX_FILE_CHARS)
         user_content.append(f"Filename: {f.get('fileName')}\n```\n{content}\n```")
@@ -104,3 +102,41 @@ def build_messages(old_files: List[Dict[str, str]], diffs: List[Dict[str, Any]])
     messages = [SYSTEM_MESSAGE, ASSISTANT_INSTRUCTION, {"role": "user", "content": "\n\n".join(user_content)}]
     return messages
 
+async def call_openai_chat(messages: List[Dict[str, str]], model: str = AI_MODEL, temperature: float = 0.2) -> Optional[str]:
+    """
+    Use OpenAI 1.x client with the Chat Completions API.
+    """
+    try:
+        # Import lazily to avoid import at module import time
+        from openai import OpenAI
+
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = await asyncio.to_thread(
+            lambda: client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+            )
+        )
+        if response and response.choices:
+            return response.choices[0].message.content or ""
+        return ""
+    except Exception as e:
+        logger.exception("OpenAI call failed: %s", e)
+        return None
+
+async def post_merge_request_note(project_id: int, merge_request_iid: int, body: str) -> bool:
+    """
+    POST /projects/:id/merge_requests/:iid/notes
+    """
+    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/notes"
+    payload = {"body": body}
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(url, headers={**GITLAB_HEADERS, "Content-Type": "application/json"}, json=payload, timeout=30.0)
+            r.raise_for_status()
+            logger.info("Posted AI comment to MR %s/%s", project_id, merge_request_iid)
+            return True
+        except Exception as e:
+            logger.exception("Failed to post MR note: %s", e)
+            return False

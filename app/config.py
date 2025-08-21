@@ -1,10 +1,9 @@
 import os
-from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENAI_API_KEY: str = os.getenv("OPEN_API_KEY", "")
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 GITLAB_TOKEN: str = os.getenv("GITLAB_TOKEN", "")
 GITLAB_URL: str = os.getenv("GITLAB_URL", "https://gitlab.com/api/v4")
 AI_MODEL: str = os.getenv("AI_MODEL", "gpt-4o-mini")
