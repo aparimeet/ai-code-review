@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OPEN_API_KEY: str = os.getenv("OPEN_API_KEY", "")
+OPENAI_API_KEY: str = os.getenv("OPEN_API_KEY", "")
 GITLAB_TOKEN: str = os.getenv("GITLAB_TOKEN", "")
 GITLAB_URL: str = os.getenv("GITLAB_URL", "https://gitlab.com/api/v4")
 AI_MODEL: str = os.getenv("AI_MODEL", "gpt-4o-mini")
