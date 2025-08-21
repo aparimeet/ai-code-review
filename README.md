@@ -21,7 +21,7 @@ A minimal FastAPI implementation of the same idea as Evobaso-J/ai-gitlab-code-re
    ```bash
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
-4. Expose your local server to GitLab (ngrok) and add a webhook:
+4. Expose your local server to GitLab (using ngrok) and add a webhook:
    - URL: https://<your-ngrok>/webhook
    - Secret token: same as `WEBHOOK_SECRET`
    - Trigger: Merge request events (updates)
