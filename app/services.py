@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 from urllib.parse import quote
 
-from .config import GITLAB_TOKEN, GITLAB_URL, OPENAI_API_KEY, AI_MODEL
+from .config import GITLAB_TOKEN, GITLAB_URL, OPENROUTER_API_KEY, AI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ async def call_openai_chat(messages: List[Dict[str, str]], model: str = AI_MODEL
         # Import lazily to avoid import at module import time
         from openai import OpenAI
 
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
         response = await asyncio.to_thread(
             lambda: client.chat.completions.create(
                 model=model,

@@ -28,8 +28,8 @@ A minimal FastAPI implementation of the same idea as Evobaso-J/ai-gitlab-code-re
 
 ## Environment Variables
 
-- `OPENAI_API_KEY` (required)
-- `AI_MODEL` (default: `gpt-4o-mini`)
+- `OPENROUTER_API_KEY` (required)
+- `AI_MODEL` (required)
 - `GITLAB_TOKEN` (required)
 - `GITLAB_URL` (default: `https://gitlab.com/api/v4`)
 - `WEBHOOK_SECRET` (required)
