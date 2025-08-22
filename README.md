@@ -64,7 +64,7 @@ These instructions will get the project running locally for development and test
 ## Environment Variables
 
 - `OPENROUTER_API_KEY` (required)
-- `AI_MODEL` (required)
+- `AI_MODEL` (required - Tested with **gpt-oss-20b** and **qwen3-coder**)
 - `GITLAB_TOKEN` (required)
 - `GITLAB_URL` (default: `https://gitlab.com/api/v4`)
 - `WEBHOOK_SECRET` (required)
