@@ -16,7 +16,10 @@ from .services import (
     fetch_merge_request_diff_refs,
     fetch_merge_request_changes,
     post_inline_merge_request_note,
-    find_first_added_line_from_unidiff,
+    build_structured_review_messages,
+    collect_file_diffs,
+    parse_ai_json_comments,
+    validate_ai_comments_against_changes,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -107,51 +110,56 @@ async def process_merge_request_review(project_id: int, source_branch: str, targ
                 old_files.append(r)
         logger.info("Fetched %d/%d old files", len(old_files), len(old_paths))
 
-        messages = build_messages(old_files, diffs)
-        logger.info("Calling OpenAI for review...")
-        answer = await call_openai_chat(messages)
-        if answer is None:
+        # Build a structured prompt for per-line comments
+        file_diffs = collect_file_diffs(diffs)
+        structured_messages = build_structured_review_messages(old_files, file_diffs)
+        logger.info(f"{structured_messages = }\n")
+        logger.info("Calling OpenAI for structured per-line comments...")
+        ai_raw = await call_openai_chat(structured_messages)
+        logger.info(f"{ai_raw = }\n")
+        if ai_raw is None:
             logger.error("OpenAI did not return an answer")
             return
-        logger.info("OpenAI response length: %d chars", len(answer))
+        ai_comments = parse_ai_json_comments(ai_raw)
+        logger.info(f"{ai_comments = }\n")
+        logger.info("Model proposed %d raw inline comments", len(ai_comments))
 
-        # Optionally include a marker to detect previously posted comment
-        decorated_answer = "<!-- ai-gitlab-code-review -->\n" + answer
-        # Try to post inline on a specific diff line first
-        posted = False
-        try:
-            diff_refs = await fetch_merge_request_diff_refs(project_id, merge_request_iid)
-            changes = await fetch_merge_request_changes(project_id, merge_request_iid)
-            logger.info("Attempting inline comment with %d changes", len(changes))
-            if diff_refs and changes:
-                inline_done = False
-                for ch in changes:
-                    new_path = ch.get("new_path") or ch.get("new_file_path") or ch.get("new_pathname")
-                    unidiff = ch.get("diff")
-                    new_line = find_first_added_line_from_unidiff(unidiff or "")
-                    if new_path and new_line:
-                        inline_done = await post_inline_merge_request_note(
-                            project_id,
-                            merge_request_iid,
-                            decorated_answer,
-                            new_path=new_path,
-                            new_line=new_line,
-                            diff_refs=diff_refs,
-                        )
-                        if inline_done:
-                            posted = True
-                            break
-            if not posted:
-                logger.info("Inline comment not possible, falling back to general MR note")
-        except Exception as e:
-            logger.exception("Inline posting failed, will fallback to general note: %s", e)
+        # Validate against actual changes and post per-line
+        diff_refs = await fetch_merge_request_diff_refs(project_id, merge_request_iid)
+        changes = await fetch_merge_request_changes(project_id, merge_request_iid)
+        valid_comments = validate_ai_comments_against_changes(ai_comments, changes)
+        logger.info(f"{valid_comments = }\n")
+        logger.info("Validated %d inline comments", len(valid_comments))
 
-        if not posted:
-            posted = await post_merge_request_note(project_id, merge_request_iid, decorated_answer)
-        if not posted:
-            logger.error("Failed to post AI comment")
-        else:
+        posted_any = False
+        if diff_refs:
+            for c in valid_comments:
+                ok = await post_inline_merge_request_note(
+                    project_id,
+                    merge_request_iid,
+                    c["body"],
+                    new_path=c["new_path"],
+                    new_line=c["new_line"],
+                    diff_refs=diff_refs,
+                )
+                posted_any = posted_any or ok
+
+        # Fallback to a single summary note if nothing posted
+        summary_posted = False
+        if not posted_any:
+            logger.info("No inline comments posted; falling back to summary note")
+            messages = build_messages(old_files, diffs)
+            summary = await call_openai_chat(messages)
+            if summary:
+                decorated = "<!-- ai-gitlab-code-review -->\n" + summary
+                summary_posted = await post_merge_request_note(project_id, merge_request_iid, decorated)
+            else:
+                logger.error("OpenAI did not return a summary, nothing to post")
+
+        if posted_any or summary_posted:
             logger.info("Successfully posted AI review to MR iid=%s", merge_request_iid)
+        else:
+            logger.error("Failed to post any AI comments")
         logger.info("Review completed in %.2fs", time.perf_counter() - t0)
     except Exception as e:
         logger.exception("Error in process_merge_request_review: %s", e)
