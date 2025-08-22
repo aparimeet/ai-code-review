@@ -1,9 +1,9 @@
-# AI GitLab Code Review (FastAPI)
+# AI Code Review for Gitlab
 
-A minimal FastAPI implementation of the same idea as Evobaso-J/ai-gitlab-code-review:
+A minimal FastAPI implementation:
 - Listen for GitLab merge request webhooks
 - Fetch diffs and old file contents
-- Build a prompt and ask OpenAI for a review
+- Build a prompt and ask model for a review
 - Post the review as a Markdown note on the merge request
 
 ## Requirements
@@ -12,19 +12,54 @@ A minimal FastAPI implementation of the same idea as Evobaso-J/ai-gitlab-code-re
 
 ## Quickstart
 
-1. Copy `.env.example` to `.env` and set the variables.
-2. Install dependencies:
+These instructions will get the project running locally for development and testing purposes.
+
+1. Copy environment example and edit secrets:
+
    ```bash
+   cp .env.example .env
+   # then edit .env and set OPENROUTER_API_KEY, AI_MODEL, GITLAB_TOKEN, and WEBHOOK_SECRET
+   ```
+
+2. Create and activate a virtual environment (recommended):
+
+   ```bash
+   python3 -m venv venv
+   # macOS / Linux
+   source venv/bin/activate
+   # Windows (PowerShell)
+   .\venv\Scripts\Activate.ps1
+   ```
+
+3. Install Python dependencies:
+
+   ```bash
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
-3. Run:
+
+4. Run the app locally with Uvicorn:
+
    ```bash
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
-4. Expose your local server to GitLab (using ngrok) and add a webhook:
-   - URL: https://<your-ngrok>/webhook
-   - Secret token: same as `WEBHOOK_SECRET`
-   - Trigger: Merge request events (updates)
+
+5. Expose your local server to GitLab for webhooks (optional, e.g. using ngrok):
+
+   - Start ngrok: `ngrok http 8000`
+   - Add a webhook in your GitLab project settings:
+     - URL: `https://<your-ngrok>/webhook`
+     - Secret token: value of `WEBHOOK_SECRET` in your `.env`
+     - Trigger: Merge request events (updates)
+
+6. (Optional) Run in Docker:
+
+   ```bash
+   # build
+   docker build -t ai-gitlab-code-review .
+   # run (pass environment variables via --env-file or -e)
+   docker run --env-file .env -p 8000:8000 ai-gitlab-code-review
+   ```
 
 ## Environment Variables
 
@@ -35,6 +70,11 @@ A minimal FastAPI implementation of the same idea as Evobaso-J/ai-gitlab-code-re
 - `WEBHOOK_SECRET` (required)
 - `PORT` (default: `8000`)
 
+Tips for local testing:
+
+- **Use a throwaway GitLab project** for testing webhooks and comments so you don't spam production projects.
+- If you need to simulate merge request payloads, save example webhook JSON and POST to `/webhook` with the `X-Gitlab-Token` header set to your `WEBHOOK_SECRET`.
+
 ## Notes & production tips
 
 - This implementation returns 200 quickly and processes AI work in background tasks.
@@ -42,3 +82,8 @@ A minimal FastAPI implementation of the same idea as Evobaso-J/ai-gitlab-code-re
 - Keep tokens secret and serve via TLS.
 - Consider deduplicating comments by detecting the HTML marker `<!-- ai-gitlab-code-review -->`.
 - For large diffs, you must implement smarter chunking to fit token limits.
+
+## Usage
+
+- The service listens for GitLab merge request webhook updates on `/webhook` and responds with a 200 immediately while processing the review in the background.
+- Reviews are posted as Markdown notes on the merge request.
