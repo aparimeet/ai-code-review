@@ -25,7 +25,7 @@ from .services import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-gitlab-review")
 
-app = FastAPI(title="AI GitLab Code Review (FastAPI)")
+app = FastAPI(title="AI GitLab Code Review")
 
 @app.post("/webhook")
 async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
