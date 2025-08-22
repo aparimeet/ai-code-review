@@ -87,3 +87,7 @@ Tips for local testing:
 
 - The service listens for GitLab merge request webhook updates on `/webhook` and responds with a 200 immediately while processing the review in the background.
 - Reviews are posted as Markdown notes on the merge request.
+
+Example review comment (what a maintainer would see):
+
+![Example review comment](assets/example_review_comment.png)
