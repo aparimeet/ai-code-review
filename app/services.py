@@ -24,7 +24,7 @@ ASSISTANT_INSTRUCTION = {
     "content": "Format the response so it renders nicely in GitLab with organized markdown. Answer the questions and include a short summary line at the top."
 }
 
-# Safety: limit sizes sent to OpenAI
+# Safety: limit sizes sent to model
 MAX_DIFF_CHARS = 30_000
 MAX_FILE_CHARS = 30_000
 MAX_INLINE_COMMENTS = 20
