@@ -13,6 +13,10 @@ from .services import (
     build_messages,
     call_openai_chat,
     post_merge_request_note,
+    fetch_merge_request_diff_refs,
+    fetch_merge_request_changes,
+    post_inline_merge_request_note,
+    find_first_added_line_from_unidiff,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -113,8 +117,37 @@ async def process_merge_request_review(project_id: int, source_branch: str, targ
 
         # Optionally include a marker to detect previously posted comment
         decorated_answer = "<!-- ai-gitlab-code-review -->\n" + answer
+        # Try to post inline on a specific diff line first
+        posted = False
+        try:
+            diff_refs = await fetch_merge_request_diff_refs(project_id, merge_request_iid)
+            changes = await fetch_merge_request_changes(project_id, merge_request_iid)
+            logger.info("Attempting inline comment with %d changes", len(changes))
+            if diff_refs and changes:
+                inline_done = False
+                for ch in changes:
+                    new_path = ch.get("new_path") or ch.get("new_file_path") or ch.get("new_pathname")
+                    unidiff = ch.get("diff")
+                    new_line = find_first_added_line_from_unidiff(unidiff or "")
+                    if new_path and new_line:
+                        inline_done = await post_inline_merge_request_note(
+                            project_id,
+                            merge_request_iid,
+                            decorated_answer,
+                            new_path=new_path,
+                            new_line=new_line,
+                            diff_refs=diff_refs,
+                        )
+                        if inline_done:
+                            posted = True
+                            break
+            if not posted:
+                logger.info("Inline comment not possible, falling back to general MR note")
+        except Exception as e:
+            logger.exception("Inline posting failed, will fallback to general note: %s", e)
 
-        posted = await post_merge_request_note(project_id, merge_request_iid, decorated_answer)
+        if not posted:
+            posted = await post_merge_request_note(project_id, merge_request_iid, decorated_answer)
         if not posted:
             logger.error("Failed to post AI comment")
         else:

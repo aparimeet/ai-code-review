@@ -140,3 +140,163 @@ async def post_merge_request_note(project_id: int, merge_request_iid: int, body:
         except Exception as e:
             logger.exception("Failed to post MR note: %s", e)
             return False
+
+
+#
+# Inline discussions on specific diff lines
+#
+
+async def fetch_merge_request_diff_refs(project_id: int, merge_request_iid: int) -> Optional[Dict[str, str]]:
+    """
+    Fetch merge request metadata to retrieve diff refs used for positioning inline notes.
+
+    GET /projects/:id/merge_requests/:iid
+    Returns keys: diff_refs -> { base_sha, start_sha, head_sha }
+    """
+    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}"
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(url, headers=GITLAB_HEADERS, timeout=20.0)
+            r.raise_for_status()
+            data = r.json() or {}
+            diff_refs = data.get("diff_refs") or {}
+            if all(k in diff_refs for k in ("base_sha", "start_sha", "head_sha")):
+                return {
+                    "base_sha": diff_refs["base_sha"],
+                    "start_sha": diff_refs["start_sha"],
+                    "head_sha": diff_refs["head_sha"],
+                }
+            logger.warning("diff_refs missing in MR %s/%s response", project_id, merge_request_iid)
+            return None
+        except Exception as e:
+            logger.exception("Failed to fetch MR diff refs: %s", e)
+            return None
+
+
+async def fetch_merge_request_changes(project_id: int, merge_request_iid: int) -> List[Dict[str, Any]]:
+    """
+    Fetch list of changes for a merge request including unified diffs.
+
+    GET /projects/:id/merge_requests/:iid/changes
+    """
+    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/changes"
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(url, headers=GITLAB_HEADERS, timeout=30.0)
+            r.raise_for_status()
+            data = r.json() or {}
+            changes = data.get("changes") or []
+            return changes
+        except Exception as e:
+            logger.exception("Failed to fetch MR changes: %s", e)
+            return []
+
+
+def find_first_added_line_from_unidiff(unidiff: str) -> Optional[int]:
+    """
+    Parse a unified diff string and return the first added line number in the new file.
+
+    The returned number corresponds to the line number in the new blob suitable for
+    GitLab's "position.new_line" when creating an inline discussion.
+    """
+    if not unidiff:
+        return None
+
+    try:
+        import re
+
+        new_line_cursor = None
+        old_line_cursor = None
+        in_hunk = False
+
+        for raw_line in unidiff.splitlines():
+            if raw_line.startswith('@@'):
+                # Example: @@ -12,5 +14,7 @@
+                m = re.match(r"@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", raw_line)
+                if not m:
+                    in_hunk = False
+                    continue
+                old_line_cursor = int(m.group('old'))
+                new_line_cursor = int(m.group('new'))
+                in_hunk = True
+                continue
+
+            if not in_hunk:
+                continue
+
+            # Ignore file headers inside unified diff
+            if raw_line.startswith('+++') or raw_line.startswith('---'):
+                continue
+
+            if raw_line.startswith('+'):
+                # This is an added line in the new file
+                # Exclude the hunk header '+' from '+++' lines already handled above
+                return new_line_cursor
+            elif raw_line.startswith('-'):
+                # Deletion increments only old cursor
+                if old_line_cursor is not None:
+                    old_line_cursor += 1
+            elif raw_line.startswith(' '):
+                # Context line increments both
+                if old_line_cursor is not None:
+                    old_line_cursor += 1
+                if new_line_cursor is not None:
+                    new_line_cursor += 1
+            elif raw_line.startswith('\\'):
+                # "\\ No newline at end of file" — ignore
+                continue
+            else:
+                # Unknown marker; best-effort increment new line to keep moving
+                if new_line_cursor is not None:
+                    new_line_cursor += 1
+
+        return None
+    except Exception as e:
+        logger.exception("Failed to parse unidiff: %s", e)
+        return None
+
+
+async def post_inline_merge_request_note(
+    project_id: int,
+    merge_request_iid: int,
+    body: str,
+    *,
+    new_path: str,
+    new_line: int,
+    diff_refs: Dict[str, str],
+) -> bool:
+    """
+    Create a discussion attached to a specific line of the diff for a merge request.
+
+    POST /projects/:id/merge_requests/:iid/discussions
+    """
+    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/discussions"
+    position = {
+        "position_type": "text",
+        "base_sha": diff_refs.get("base_sha"),
+        "start_sha": diff_refs.get("start_sha"),
+        "head_sha": diff_refs.get("head_sha"),
+        "new_path": new_path,
+        "new_line": new_line,
+    }
+    payload = {"body": body, "position": position}
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                url,
+                headers={**GITLAB_HEADERS, "Content-Type": "application/json"},
+                json=payload,
+                timeout=30.0,
+            )
+            r.raise_for_status()
+            logger.info(
+                "Posted inline AI comment to MR %s/%s at %s:%s",
+                project_id,
+                merge_request_iid,
+                new_path,
+                new_line,
+            )
+            return True
+        except Exception as e:
+            logger.exception("Failed to post inline MR discussion: %s", e)
+            return False
