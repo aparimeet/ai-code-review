@@ -113,22 +113,18 @@ async def process_merge_request_review(project_id: int, source_branch: str, targ
         # Build a structured prompt for per-line comments
         file_diffs = collect_file_diffs(diffs)
         structured_messages = build_structured_review_messages(old_files, file_diffs)
-        logger.info(f"{structured_messages = }\n")
         logger.info("Calling OpenAI for structured per-line comments...")
         ai_raw = await call_openai_chat(structured_messages)
-        logger.info(f"{ai_raw = }\n")
         if ai_raw is None:
             logger.error("OpenAI did not return an answer")
             return
         ai_comments = parse_ai_json_comments(ai_raw)
-        logger.info(f"{ai_comments = }\n")
         logger.info("Model proposed %d raw inline comments", len(ai_comments))
 
         # Validate against actual changes and post per-line
         diff_refs = await fetch_merge_request_diff_refs(project_id, merge_request_iid)
         changes = await fetch_merge_request_changes(project_id, merge_request_iid)
         valid_comments = validate_ai_comments_against_changes(ai_comments, changes)
-        logger.info(f"{valid_comments = }\n")
         logger.info("Validated %d inline comments", len(valid_comments))
 
         posted_any = False
