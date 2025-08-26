@@ -274,10 +274,6 @@ def validate_ai_comments_against_changes(
         path_to_added[path] = enumerate_added_new_lines(ch.get("diff", ""))
 
     def find_best_line(added: Dict[int, str], desired_line: int, code_hint: str, body: str) -> Optional[int]:
-        # # If the desired line exists, prefer it.
-        # if desired_line in added:
-        #     return desired_line
-        # Try exact code match from explicit code hint.
         target = code_hint or _extract_inline_code_from_body(body) or ""
         target = target.strip()
         if target:
@@ -418,71 +414,6 @@ async def fetch_merge_request_changes(project_id: int, merge_request_iid: int) -
         except Exception as e:
             logger.exception("Failed to fetch MR changes: %s", e)
             return []
-
-
-def find_first_added_line_from_unidiff(unidiff: str) -> Optional[int]:
-    """
-    Parse a unified diff string and return the first added line number in the new file.
-
-    The returned number corresponds to the line number in the new blob suitable for
-    GitLab's "position.new_line" when creating an inline discussion.
-    """
-    if not unidiff:
-        return None
-
-    try:
-        import re
-
-        new_line_cursor = None
-        old_line_cursor = None
-        in_hunk = False
-
-        for raw_line in unidiff.splitlines():
-            if raw_line.startswith('@@'):
-                # Example: @@ -12,5 +14,7 @@
-                m = re.match(r"@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", raw_line)
-                if not m:
-                    in_hunk = False
-                    continue
-                old_line_cursor = int(m.group('old'))
-                new_line_cursor = int(m.group('new'))
-                in_hunk = True
-                continue
-
-            if not in_hunk:
-                continue
-
-            # Ignore file headers inside unified diff
-            if raw_line.startswith('+++') or raw_line.startswith('---'):
-                continue
-
-            if raw_line.startswith('+'):
-                # This is an added line in the new file
-                # Exclude the hunk header '+' from '+++' lines already handled above
-                return new_line_cursor
-            elif raw_line.startswith('-'):
-                # Deletion increments only old cursor
-                if old_line_cursor is not None:
-                    old_line_cursor += 1
-            elif raw_line.startswith(' '):
-                # Context line increments both
-                if old_line_cursor is not None:
-                    old_line_cursor += 1
-                if new_line_cursor is not None:
-                    new_line_cursor += 1
-            elif raw_line.startswith('\\'):
-                # "\\ No newline at end of file" — ignore
-                continue
-            else:
-                # Unknown marker; best-effort increment new line to keep moving
-                if new_line_cursor is not None:
-                    new_line_cursor += 1
-
-        return None
-    except Exception as e:
-        logger.exception("Failed to parse unidiff: %s", e)
-        return None
-
 
 async def post_inline_merge_request_note(
     project_id: int,
