@@ -67,7 +67,7 @@ async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
     # Start background task and return 200 quickly
     logger.info(
         "Scheduling review: project_id=%s iid=%s %s -> %s action=%s",
-        project_id, merge_request_iid, target_branch, source_branch, action,
+        project_id, merge_request_iid, source_branch, target_branch, action,
     )
     background_tasks.add_task(process_merge_request_review, project_id, source_branch, target_branch, merge_request_iid)
     return JSONResponse({"status": "accepted"}, status_code=200)
@@ -80,9 +80,9 @@ async def process_merge_request_review(project_id: int, source_branch: str, targ
         t0 = time.perf_counter()
         logger.info(
             "Begin review: project_id=%s iid=%s %s -> %s",
-            project_id, merge_request_iid, target_branch, source_branch,
+            project_id, merge_request_iid, source_branch, target_branch,
         )
-        logger.info("Fetching branch diff for project %s %s -> %s", project_id, target_branch, source_branch)
+        logger.info("Fetching branch diff for project %s %s -> %s", project_id, source_branch, target_branch)
         compare = await fetch_branch_diff(project_id, target_branch, source_branch)
         if not compare:
             logger.error("No compare data, aborting review")

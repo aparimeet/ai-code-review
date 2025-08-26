@@ -308,7 +308,6 @@ def validate_ai_comments_against_changes(
         if not path or not body:
             continue
         added_map = path_to_added.get(path)
-        logger.info(f"{added_map =}")
         if not added_map:
             # relaxed match by suffix
             for k in path_to_added.keys():
