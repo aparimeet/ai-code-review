@@ -1,17 +1,17 @@
 # AI-based Code Review
 
+A minimal FastAPI implementation:
+- Listen for merge request webhooks
+- Fetch diffs and old file contents
+- Build a prompt and ask model for a review
+- Post the review as a Markdown note on the merge request
+
 ## Supported platforms
 
 | Platform | Status |
 | --- | --- |
 | GitLab | ✅ Supported |
 | GitHub | ⏳ Planned |
-
-A minimal FastAPI implementation:
-- Listen for GitLab merge request webhooks
-- Fetch diffs and old file contents
-- Build a prompt and ask model for a review
-- Post the review as a Markdown note on the merge request
 
 ## Requirements
 
