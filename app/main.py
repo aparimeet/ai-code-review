@@ -6,7 +6,7 @@ from typing import Any, Dict
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from .config import WEBHOOK_SECRET, PORT
+from .config import WEBHOOK_SECRET, PORT, GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN
 from .gitlab_services import (
     fetch_branch_diff,
     fetch_raw_file,
@@ -21,6 +21,15 @@ from .gitlab_services import (
     parse_ai_json_comments,
     validate_ai_comments_against_changes,
 )
+
+from .github_services import (
+    fetch_github_pr_diff,
+    fetch_github_file_content,
+    post_github_review_comment,
+    post_github_review_summary,
+)
+import hmac
+import hashlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-gitlab-review")
@@ -159,6 +168,56 @@ async def process_merge_request_review(project_id: int, source_branch: str, targ
         logger.info("Review completed in %.2fs", time.perf_counter() - t0)
     except Exception as e:
         logger.exception("Error in process_merge_request_review: %s", e)
+
+
+
+@app.post("/github/webhook")
+async def github_webhook(request: Request, background_tasks: BackgroundTasks):
+    signature = request.headers.get("X-Hub-Signature-256")
+    body = await request.body()
+    secret = GITHUB_WEBHOOK_SECRET
+    expected_signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        logger.warning("Unauthorized GitHub webhook request: invalid signature")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    payload = await request.json()
+    # Only handle pull_request events
+    if payload.get("action") not in ("opened", "synchronize", "reopened"):
+        return JSONResponse({"status": "ignored_action"}, status_code=200)
+
+    pr = payload["pull_request"]
+    repo_info = payload["repository"]
+    owner = repo_info["owner"]["login"]
+    repo = repo_info["name"]
+    pr_number = pr["number"]
+    base_sha = pr["base"]["sha"]
+    head_sha = pr["head"]["sha"]
+
+    github_token = GITHUB_TOKEN
+    background_tasks.add_task(
+        process_github_pr_review, owner, repo, pr_number, base_sha, head_sha, github_token
+    )
+    return JSONResponse({"status": "accepted"}, status_code=200)
+
+async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha, token):
+    # Fetch the diff
+    diff_data = await fetch_github_pr_diff(owner, repo, pr_number, token)
+    diff = diff_data["diff"]
+
+    # Optionally fetch old/new file content (example for README.md)
+    old_content = await fetch_github_file_content(owner, repo, "README.md", base_sha, token)
+    new_content = await fetch_github_file_content(owner, repo, "README.md", head_sha, token)
+
+    # Build review prompt for the AI model
+    messages = build_messages(
+        [{"fileName": "README.md", "fileContent": old_content}],
+        [{"diff": diff}],
+    )
+    summary = await call_openai_chat(messages)
+    if summary:
+        decorated = "<!-- ai-github-code-review -->\n" + summary
+        await post_github_review_summary(owner, repo, pr_number, decorated, "COMMENT", token)
 
 if __name__ == "__main__":
     import uvicorn
