@@ -1,6 +1,11 @@
 # AI-based Code Review
 
-**Currently only supported for Gitlab**
+## Supported platforms
+
+| Platform | Status |
+| --- | --- |
+| GitLab | ✅ Supported |
+| GitHub | ⏳ Planned |
 
 A minimal FastAPI implementation:
 - Listen for GitLab merge request webhooks
