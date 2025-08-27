@@ -23,6 +23,8 @@ from .gitlab_services import (
 )
 
 from .github_services import (
+    fetch_all_file_contents,
+    fetch_changed_files,
     fetch_github_pr_diff,
     fetch_github_file_content,
     post_github_review_comment,
@@ -32,9 +34,9 @@ import hmac
 import hashlib
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ai-gitlab-review")
+logger = logging.getLogger("ai-code-review")
 
-app = FastAPI(title="AI GitLab Code Review")
+app = FastAPI(title="AI Code Review")
 
 @app.post("gitlab/webhook")
 async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -201,23 +203,34 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     return JSONResponse({"status": "accepted"}, status_code=200)
 
 async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha, token):
+    t0 = time.perf_counter()
+    logger.info(
+        "Begin GitHub PR review: owner=%s repo=%s pr_number=%s base=%s head=%s",
+        owner, repo, pr_number, base_sha, head_sha
+    )
+
     # Fetch the diff
     diff_data = await fetch_github_pr_diff(owner, repo, pr_number, token)
     diff = diff_data["diff"]
 
-    # Optionally fetch old/new file content (example for README.md)
-    old_content = await fetch_github_file_content(owner, repo, "README.md", base_sha, token)
-    new_content = await fetch_github_file_content(owner, repo, "README.md", head_sha, token)
+    # Fetch changed files
+    changed_files = await fetch_changed_files(owner, repo, pr_number, token)
+    logger.info("Changed files: %s", changed_files)
+
+    # Fetch contents for all changed files
+    file_contents = await fetch_all_file_contents(owner, repo, changed_files, base_sha, head_sha, token)
+    old_files = [{"fileName": fc["fileName"], "fileContent": fc["oldContent"]} for fc in file_contents]
+    diffs = [{"diff": diff}]
 
     # Build review prompt for the AI model
-    messages = build_messages(
-        [{"fileName": "README.md", "fileContent": old_content}],
-        [{"diff": diff}],
-    )
+    messages = build_messages(old_files, diffs)
     summary = await call_openai_chat(messages)
     if summary:
         decorated = "<!-- ai-github-code-review -->\n" + summary
+        from .github_services import post_github_review_summary
         await post_github_review_summary(owner, repo, pr_number, decorated, "COMMENT", token)
+        logger.info("Posted summary review comment to PR #%s", pr_number)
+    logger.info("GitHub PR review completed in %.2fs", time.perf_counter() - t0)
 
 if __name__ == "__main__":
     import uvicorn
