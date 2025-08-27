@@ -1,6 +1,6 @@
 import httpx
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 GITHUB_URL = "https://api.github.com"
 logger = logging.getLogger("ai-github-review")

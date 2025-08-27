@@ -36,7 +36,7 @@ logger = logging.getLogger("ai-gitlab-review")
 
 app = FastAPI(title="AI GitLab Code Review")
 
-@app.post("/webhook")
+@app.post("gitlab/webhook")
 async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
     # Basic validation of token
     token = request.headers.get("x-gitlab-token") or request.headers.get("X-Gitlab-Token")
