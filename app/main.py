@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
 from .config import WEBHOOK_SECRET, PORT
-from .services import (
+from .gitlab_services import (
     fetch_branch_diff,
     fetch_raw_file,
     build_messages,
