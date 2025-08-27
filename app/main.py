@@ -80,10 +80,10 @@ async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
         "Scheduling review: project_id=%s iid=%s %s -> %s action=%s",
         project_id, merge_request_iid, source_branch, target_branch, action,
     )
-    background_tasks.add_task(process_merge_request_review, project_id, source_branch, target_branch, merge_request_iid)
+    background_tasks.add_task(process_gitlab_merge_request_review, project_id, source_branch, target_branch, merge_request_iid)
     return JSONResponse({"status": "accepted"}, status_code=200)
 
-async def process_merge_request_review(project_id: int, source_branch: str, target_branch: str, merge_request_iid: int):
+async def process_gitlab_merge_request_review(project_id: int, source_branch: str, target_branch: str, merge_request_iid: int):
     """
     Orchestrate fetching diffs, building prompt, calling OpenAI, and posting comment.
     """
