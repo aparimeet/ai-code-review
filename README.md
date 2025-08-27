@@ -1,4 +1,6 @@
-# AI Code Review for Gitlab
+# AI-based Code Review
+
+**Currently only supported for Gitlab**
 
 A minimal FastAPI implementation:
 - Listen for GitLab merge request webhooks
