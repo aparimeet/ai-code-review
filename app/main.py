@@ -26,9 +26,6 @@ from .github_services import (
     fetch_all_file_contents,
     fetch_changed_files,
     fetch_github_pr_diff,
-    fetch_github_file_content,
-    post_github_review_comment,
-    post_github_review_summary,
 )
 import hmac
 import hashlib
