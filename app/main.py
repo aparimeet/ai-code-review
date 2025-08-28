@@ -24,8 +24,11 @@ from .gitlab_services import (
 
 from .github_services import (
     fetch_all_file_contents,
-    fetch_changed_files,
     fetch_github_pr_diff,
+    fetch_changed_files_with_patch,
+    post_github_review_comment,
+    post_github_review_summary,
+    compute_github_position_from_patch,
 )
 import hmac
 import hashlib
@@ -205,12 +208,11 @@ async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha):
         owner, repo, pr_number, base_sha, head_sha
     )
 
-    # Fetch the diff
+    # Fetch diff and changed files with patches
     diff_data = await fetch_github_pr_diff(owner, repo, pr_number)
     diff = diff_data["diff"]
-
-    # Fetch changed files
-    changed_files = await fetch_changed_files(owner, repo, pr_number)
+    files_with_patches = await fetch_changed_files_with_patch(owner, repo, pr_number)
+    changed_files = [f["filename"] for f in files_with_patches]
     logger.info("Changed files: %s", changed_files)
 
     # Fetch contents for all changed files
@@ -218,14 +220,39 @@ async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha):
     old_files = [{"fileName": fc["fileName"], "fileContent": fc["oldContent"]} for fc in file_contents]
     diffs = [{"diff": diff}]
 
-    # Build review prompt for the AI model
-    messages = build_messages(old_files, diffs)
-    summary = await call_openai_chat(messages)
-    if summary:
-        decorated = "<!-- ai-github-code-review -->\n" + summary
-        from .github_services import post_github_review_summary
-        await post_github_review_summary(owner, repo, pr_number, decorated, "COMMENT")
-        logger.info("Posted summary review comment to PR #%s", pr_number)
+    # Ask model for structured inline comments (reuse GitLab JSON format)
+    file_diffs = collect_file_diffs([{"old_path": f.get("previous_filename"), "new_path": f.get("filename"), "diff": f.get("patch", "")} for f in files_with_patches])
+    structured_messages = build_structured_review_messages(old_files, file_diffs)
+    ai_raw = await call_openai_chat(structured_messages)
+    ai_comments = parse_ai_json_comments(ai_raw or "")
+    logger.info("Model proposed %d raw inline comments (GitHub)", len(ai_comments))
+
+    # Validate against actual file patches and map to positions
+    path_to_patch = {f.get("filename"): f.get("patch", "") for f in files_with_patches}
+    posted_any = False
+    for c in ai_comments:
+        path = c.get("new_path") or ""
+        body = (c.get("body") or "").strip()
+        new_line = int(c.get("new_line") or 0)
+        if not path or not body or new_line <= 0:
+            continue
+        patch = path_to_patch.get(path) or next((path_to_patch[p] for p in path_to_patch if p.endswith(path) or path.endswith(p)), "")
+        if not patch:
+            continue
+        position = compute_github_position_from_patch(patch, new_line)
+        if position is None:
+            continue
+        ok = await post_github_review_comment(owner, repo, pr_number, body, head_sha, path, position)
+        posted_any = posted_any or ok
+
+    # Fallback to summary if no inline comments posted
+    if not posted_any:
+        messages = build_messages(old_files, diffs)
+        summary = await call_openai_chat(messages)
+        if summary:
+            decorated = "<!-- ai-github-code-review -->\n" + summary
+            await post_github_review_summary(owner, repo, pr_number, decorated, "COMMENT")
+            logger.info("Posted summary review comment to PR #%s", pr_number)
     logger.info("GitHub PR review completed in %.2fs", time.perf_counter() - t0)
 
 if __name__ == "__main__":
