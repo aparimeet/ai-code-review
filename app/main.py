@@ -6,7 +6,7 @@ from typing import Any, Dict
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from .config import GITLAB_WEBHOOK_SECRET, PORT, GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN
+from .config import GITLAB_WEBHOOK_SECRET, PORT, GITHUB_WEBHOOK_SECRET
 from .gitlab_services import (
     fetch_branch_diff,
     fetch_raw_file,
@@ -196,13 +196,12 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     base_sha = pr["base"]["sha"]
     head_sha = pr["head"]["sha"]
 
-    github_token = GITHUB_TOKEN
     background_tasks.add_task(
-        process_github_pr_review, owner, repo, pr_number, base_sha, head_sha, github_token
+        process_github_pr_review, owner, repo, pr_number, base_sha, head_sha
     )
     return JSONResponse({"status": "accepted"}, status_code=200)
 
-async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha, token):
+async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha):
     t0 = time.perf_counter()
     logger.info(
         "Begin GitHub PR review: owner=%s repo=%s pr_number=%s base=%s head=%s",
@@ -210,15 +209,15 @@ async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha, t
     )
 
     # Fetch the diff
-    diff_data = await fetch_github_pr_diff(owner, repo, pr_number, token)
+    diff_data = await fetch_github_pr_diff(owner, repo, pr_number)
     diff = diff_data["diff"]
 
     # Fetch changed files
-    changed_files = await fetch_changed_files(owner, repo, pr_number, token)
+    changed_files = await fetch_changed_files(owner, repo, pr_number)
     logger.info("Changed files: %s", changed_files)
 
     # Fetch contents for all changed files
-    file_contents = await fetch_all_file_contents(owner, repo, changed_files, base_sha, head_sha, token)
+    file_contents = await fetch_all_file_contents(owner, repo, changed_files, base_sha, head_sha)
     old_files = [{"fileName": fc["fileName"], "fileContent": fc["oldContent"]} for fc in file_contents]
     diffs = [{"diff": diff}]
 
@@ -228,7 +227,7 @@ async def process_github_pr_review(owner, repo, pr_number, base_sha, head_sha, t
     if summary:
         decorated = "<!-- ai-github-code-review -->\n" + summary
         from .github_services import post_github_review_summary
-        await post_github_review_summary(owner, repo, pr_number, decorated, "COMMENT", token)
+        await post_github_review_summary(owner, repo, pr_number, decorated, "COMMENT")
         logger.info("Posted summary review comment to PR #%s", pr_number)
     logger.info("GitHub PR review completed in %.2fs", time.perf_counter() - t0)
 
