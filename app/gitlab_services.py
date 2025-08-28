@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 from urllib.parse import quote
 
-from .config import GITLAB_TOKEN, GITLAB_URL, OPENROUTER_API_KEY, AI_MODEL
+from .config import GITLAB_TOKEN, GITLAB_API_URL, OPENROUTER_API_KEY, AI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def fetch_branch_diff(project_id: int, target_branch: str, source_branch: 
     """
     Call: GET /projects/:id/repository/compare?from=target&to=source&unidiff=true
     """
-    url = f"{GITLAB_URL}/projects/{project_id}/repository/compare"
+    url = f"{GITLAB_API_URL}/projects/{project_id}/repository/compare"
     params = {"from": target_branch, "to": source_branch, "unidiff": "true"}
     async with httpx.AsyncClient() as client:
         try:
@@ -52,7 +52,7 @@ async def fetch_raw_file(project_id: int, file_path: str, ref: str) -> Optional[
     # GitLab expects the file_path in the URL path to be fully URL-encoded
     # including slashes. Use quote with safe="" to encode '/'.
     encoded_path = quote(file_path, safe="")
-    url = f"{GITLAB_URL}/projects/{project_id}/repository/files/{encoded_path}/raw"
+    url = f"{GITLAB_API_URL}/projects/{project_id}/repository/files/{encoded_path}/raw"
     params = {"ref": ref}
     async with httpx.AsyncClient() as client:
         try:
@@ -352,7 +352,7 @@ async def post_merge_request_note(project_id: int, merge_request_iid: int, body:
     """
     POST /projects/:id/merge_requests/:iid/notes
     """
-    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/notes"
+    url = f"{GITLAB_API_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/notes"
     payload = {"body": body}
     async with httpx.AsyncClient() as client:
         try:
@@ -376,7 +376,7 @@ async def fetch_merge_request_diff_refs(project_id: int, merge_request_iid: int)
     GET /projects/:id/merge_requests/:iid
     Returns keys: diff_refs -> { base_sha, start_sha, head_sha }
     """
-    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}"
+    url = f"{GITLAB_API_URL}/projects/{project_id}/merge_requests/{merge_request_iid}"
     async with httpx.AsyncClient() as client:
         try:
             r = await client.get(url, headers=GITLAB_HEADERS, timeout=20.0)
@@ -402,7 +402,7 @@ async def fetch_merge_request_changes(project_id: int, merge_request_iid: int) -
 
     GET /projects/:id/merge_requests/:iid/changes
     """
-    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/changes"
+    url = f"{GITLAB_API_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/changes"
     async with httpx.AsyncClient() as client:
         try:
             r = await client.get(url, headers=GITLAB_HEADERS, timeout=30.0)
@@ -428,7 +428,7 @@ async def post_inline_merge_request_note(
 
     POST /projects/:id/merge_requests/:iid/discussions
     """
-    url = f"{GITLAB_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/discussions"
+    url = f"{GITLAB_API_URL}/projects/{project_id}/merge_requests/{merge_request_iid}/discussions"
     position = {
         "position_type": "text",
         "base_sha": diff_refs.get("base_sha"),

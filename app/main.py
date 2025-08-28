@@ -6,7 +6,7 @@ from typing import Any, Dict
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from .config import WEBHOOK_SECRET, PORT, GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN
+from .config import GITLAB_WEBHOOK_SECRET, PORT, GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN
 from .gitlab_services import (
     fetch_branch_diff,
     fetch_raw_file,
@@ -38,11 +38,11 @@ logger = logging.getLogger("ai-code-review")
 
 app = FastAPI(title="AI Code Review")
 
-@app.post("gitlab/webhook")
+@app.post("/gitlab/webhook")
 async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
     # Basic validation of token
     token = request.headers.get("x-gitlab-token") or request.headers.get("X-Gitlab-Token")
-    if token != WEBHOOK_SECRET:
+    if token != GITLAB_WEBHOOK_SECRET:
         logger.warning("Unauthorized webhook request: missing/invalid token")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
