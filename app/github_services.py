@@ -1,7 +1,7 @@
 import httpx
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .config import GITHUB_API_URL, GITHUB_TOKEN
 
@@ -93,42 +93,3 @@ async def fetch_changed_files_with_patch(owner: str, repo: str, pr_number: int) 
             "status": f.get("status"),
         })
     return out
-
-def compute_patch_newline_to_position(patch: str) -> Dict[int, int]:
-    """
-    Build a mapping of new file line -> position index within the GitHub patch.
-    Position counts all lines in the patch (including @@ headers and no-newline markers),
-    starting from 1.
-    """
-    mapping: Dict[int, int] = {}
-    if not patch:
-        return mapping
-    position: int = 0
-    new_cursor: Optional[int] = None
-    for raw_line in patch.splitlines():
-        position += 1
-        if raw_line.startswith('@@'):
-            m = re.match(r"@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", raw_line)
-            if m:
-                new_cursor = int(m.group('new'))
-            else:
-                new_cursor = None
-            continue
-        if new_cursor is None:
-            continue
-        if raw_line.startswith('+') and not raw_line.startswith('+++'):
-            mapping[new_cursor] = position
-            new_cursor += 1
-        elif raw_line.startswith(' ') or raw_line.startswith('\\'):
-            new_cursor += 1
-        elif raw_line.startswith('-') and not raw_line.startswith('---'):
-            # Deletions do not advance new file line numbers
-            pass
-    return mapping
-
-def compute_github_position_from_patch(patch: str, new_line: int) -> Optional[int]:
-    """
-    Compute the GitHub diff position for a given new file line number.
-    Returns None if the line cannot be located within the patch.
-    """
-    return compute_patch_newline_to_position(patch).get(new_line)
