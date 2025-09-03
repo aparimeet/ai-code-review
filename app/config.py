@@ -10,6 +10,7 @@ GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
 GITHUB_API_URL: str = os.getenv("GITHUB_API_URL", "https://api.github.com")
 GITHUB_WEBHOOK_SECRET: str = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 AI_MODEL: str = os.getenv("AI_MODEL", "")
 PORT: int = int(os.getenv("PORT", "8000"))
 

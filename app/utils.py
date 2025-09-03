@@ -4,7 +4,7 @@ import json
 import re
 from typing import List, Dict, Any, Optional, Union
 
-from .config import OPENROUTER_API_KEY, AI_MODEL
+from .config import OPENROUTER_API_KEY, AI_MODEL, OPENAI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +351,7 @@ def validate_ai_comments_against_changes(
             break
     return valid
 
-async def call_openai_chat(messages: List[Dict[str, str]], model: str = AI_MODEL, temperature: float = 0.2) -> Optional[str]:
+async def call_openai_chat(messages: List[Dict[str, Any]], model: str = AI_MODEL, temperature: float = 0.2) -> Optional[str]:
     """
     Use OpenAI 1.x client with the Chat Completions API.
     """
@@ -359,7 +359,13 @@ async def call_openai_chat(messages: List[Dict[str, str]], model: str = AI_MODEL
         # Import lazily to avoid import at module import time
         from openai import OpenAI
 
-        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY, max_retries=20)
+        if OPENAI_API_KEY:
+            client = OpenAI(api_key=OPENAI_API_KEY, max_retries=20)
+        elif OPENROUTER_API_KEY:
+            client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY, max_retries=20)
+        else:
+            raise ValueError("OPENAI_API_KEY or OPENROUTER_API_KEY must be configured")
+
         response = await asyncio.to_thread(
             lambda: client.chat.completions.create(
                 model=model,
