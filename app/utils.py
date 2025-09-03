@@ -20,7 +20,7 @@ ASSISTANT_INSTRUCTION = {
 # Safety: limit sizes sent to model
 MAX_DIFF_CHARS = 30_000
 MAX_FILE_CHARS = 30_000
-MAX_INLINE_COMMENTS = 3
+MAX_INLINE_COMMENTS = 20
 
 def truncate_text(s: str, max_chars: int) -> str:
     if s is None:
