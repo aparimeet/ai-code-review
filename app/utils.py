@@ -2,7 +2,7 @@ import asyncio
 import logging
 import json
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from .config import OPENROUTER_API_KEY, AI_MODEL
 
@@ -163,47 +163,76 @@ def parse_ai_json_comments(text: str) -> List[Dict[str, Any]]:
     return []
 
 
-def enumerate_added_new_lines(unidiff: str) -> Dict[int, str]:
+def parse_unified_diff(unidiff: str, return_type: str = "content") -> Union[Dict[int, str], Dict[int, int]]:
     """
-    Return a mapping of new_line -> line_text for each added line in a unified diff chunk.
-    Line text excludes the leading '+'.
+    Parse a unified diff and return different types of mappings.
+
+    Args:
+        unidiff: Unified diff string to parse
+        return_type: Type of mapping to return
+            - "content": Dict[int, str] mapping line numbers to line content (for validation)
+            - "position": Dict[int, int] mapping line numbers to positions (for GitHub API)
+
+    Returns:
+        Dict mapping new file line numbers to either line content or position
     """
-    mapping: Dict[int, str] = {}
+    content_mapping: Dict[int, str] = {}
+    position_mapping: Dict[int, int] = {}
+
     if not unidiff:
-        return mapping
+        return content_mapping if return_type == "content" else position_mapping
+
+    lines = unidiff.splitlines()
     new_cursor: Optional[int] = None
     old_cursor: Optional[int] = None
-    for raw_line in unidiff.splitlines():
+    position = 0  # Absolute position counter for GitHub
+    first_hunk_found = False
+
+    for raw_line in lines:
         if raw_line.startswith('@@'):
+            # Start of a new hunk
             m = re.match(r"@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", raw_line)
             if not m:
                 new_cursor = None
                 old_cursor = None
+                first_hunk_found = False
                 continue
             old_cursor = int(m.group('old'))
             new_cursor = int(m.group('new'))
+            first_hunk_found = True
             continue
+
         if new_cursor is None:
             continue
+
+        if return_type == "position":
+            if first_hunk_found:
+                position += 1  # Increment position for each line after the first @@ header
+
         if raw_line.startswith('+') and not raw_line.startswith('+++'):
-            mapping[new_cursor] = raw_line[1:]
+            # Added line
+            if return_type == "content":
+                content_mapping[new_cursor] = raw_line[1:]
+            elif return_type == "position" and first_hunk_found:
+                position_mapping[new_cursor] = position
             new_cursor += 1
         elif raw_line.startswith('-') and not raw_line.startswith('---'):
+            # Deleted line - doesn't advance new file cursor
             if old_cursor is not None:
                 old_cursor += 1
-        elif raw_line.startswith(' '):
+        elif raw_line.startswith(' ') or raw_line.startswith('\\'):
+            # Context line or no-newline marker
             if new_cursor is not None:
                 new_cursor += 1
             if old_cursor is not None:
                 old_cursor += 1
-        elif raw_line.startswith('\\'):
-            # no newline markers
-            continue
         else:
             # unknown line, increment new cursor best-effort
             if new_cursor is not None:
                 new_cursor += 1
-    return mapping
+
+    return content_mapping if return_type == "content" else position_mapping
+
 
 
 def _extract_inline_code_from_body(body: str) -> Optional[str]:
@@ -241,7 +270,7 @@ def validate_ai_comments_against_changes(
             if not path:
                 continue
             diff = ch.get("diff", "")
-            path_to_added[path] = enumerate_added_new_lines(diff)
+            path_to_added[path] = parse_unified_diff(diff, "content")
     elif platform == "github":
         for f in changes:
             path = f.get("filename") or f.get("previous_filename") or ""
@@ -249,7 +278,7 @@ def validate_ai_comments_against_changes(
                 continue
             patch = f.get("patch", "")
             if patch:
-                path_to_added[path] = enumerate_added_new_lines(patch)
+                path_to_added[path] = parse_unified_diff(patch, "content")
                 path_to_patch[path] = patch
 
     def find_best_line(added: Dict[int, str], desired_line: int, code_hint: str, body: str) -> Optional[int]:
@@ -305,7 +334,8 @@ def validate_ai_comments_against_changes(
         if platform == "github":
             # Convert new file line to GitHub position
             patch = path_to_patch.get(path, "")
-            position = compute_github_position_from_patch(patch, best_line)
+            position_mapping = parse_unified_diff(patch, "position")
+            position = position_mapping.get(best_line)
             if position is None:
                 continue
             valid.append({
@@ -343,54 +373,3 @@ async def call_openai_chat(messages: List[Dict[str, str]], model: str = AI_MODEL
     except Exception as e:
         logger.exception("OpenAI call failed: %s", e)
         return None
-
-def compute_patch_newline_to_position(patch: str) -> Dict[int, int]:
-    """
-    Build a mapping of new file line -> position index within the GitHub patch.
-    Position is the absolute line number from the first @@ hunk header in the diff.
-    This matches GitHub's API requirements for inline comments.
-    """
-    mapping: Dict[int, int] = {}
-    if not patch:
-        return mapping
-
-    lines = patch.splitlines()
-    position = 0  # Absolute position counter starting from 0
-    new_cursor = None
-    first_hunk_found = False
-
-    for line in lines:
-        if line.startswith('@@'):
-            # Start of a new hunk
-            m = re.match(r"@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", line)
-            if m:
-                new_cursor = int(m.group('new'))
-                first_hunk_found = True
-            continue
-
-        if not first_hunk_found or new_cursor is None:
-            continue
-
-        position += 1  # Increment position for each line after the first @@ header
-
-        if line.startswith('+') and not line.startswith('+++'):
-            # Added line - map new file line to absolute position
-            mapping[new_cursor] = position
-            new_cursor += 1
-        elif line.startswith(' ') or line.startswith('\\'):
-            # Context line or no-newline marker
-            new_cursor += 1
-        elif line.startswith('-') and not line.startswith('---'):
-            # Deleted line - doesn't advance new file cursor
-            pass
-
-    return mapping
-
-def compute_github_position_from_patch(patch: str, new_line: int) -> Optional[int]:
-    """
-    Compute the GitHub diff position for a given new file line number.
-    Returns None if the line cannot be located within the patch.
-    """
-    return compute_patch_newline_to_position(patch).get(new_line)
-
-
