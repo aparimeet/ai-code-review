@@ -132,10 +132,13 @@ Tips for local testing:
 - **Async processing**: Non-blocking webhook responses
 
 ## Screenshots
-Example review comment:
 
-GitLab:
-![GitLab](assets/example_review_comment_gitlab.png)
+### Example Review Comments
 
-GitHub:
-![GitHub](assets/example_review_comment_github.png)
+#### GitLab Merge Request Review
+![GitLab Code Review Example](assets/example_review_comment_gitlab.png)
+*Example of AI-generated code review comments on a GitLab merge request*
+
+#### GitHub Pull Request Review
+![GitHub Code Review Example](assets/example_review_comment_github.png)
+*Example of AI-generated code review comments on a GitHub pull request*
