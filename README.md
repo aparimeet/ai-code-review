@@ -134,5 +134,8 @@ Tips for local testing:
 ## Screenshots
 Example review comment:
 
+GitLab:
 ![GitLab](assets/example_review_comment_gitlab.png)
+
+GitHub:
 ![GitHub](assets/example_review_comment_github.png)
