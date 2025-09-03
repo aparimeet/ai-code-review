@@ -51,13 +51,22 @@ These instructions will get the project running locally for development and test
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-5. Expose your local server to GitLab for webhooks (optional, e.g. using ngrok):
+5. (Optional) Expose your local server for webhooks (using ngrok):
 
+   **For GitLab:**
    - Start ngrok: `ngrok http 8000`
    - Add a webhook in your GitLab project settings:
-     - URL: `https://<your-ngrok>/webhook`
-     - Secret token: value of `WEBHOOK_SECRET` in your `.env`
-     - Trigger: Merge request events (updates)
+     - URL: `https://<your-ngrok>/gitlab/webhook`
+     - Secret token: value of `GITLAB_WEBHOOK_SECRET` in your `.env`
+     - Trigger: Pull requests (or merge requests) events
+
+   **For GitHub:**
+   - Start ngrok: `ngrok http 8000`
+   - Add a webhook in your GitHub repository settings:
+     - URL: `https://<your-ngrok>/github/webhook`
+     - Content type: `application/json`
+     - Secret: value of `GITHUB_WEBHOOK_SECRET` in your `.env`
+     - Trigger: Pull requests (check "Pull requests" under "Let me select individual events")
 
 6. (Optional) Run in Docker:
 
@@ -88,7 +97,7 @@ These instructions will get the project running locally for development and test
 Tips for local testing:
 
 - **Use throwaway projects** for testing webhooks and comments so you don't spam production projects.
-- For GitLab: POST merge request webhook JSON to `/webhook` with `X-Gitlab-Token` header
+- For GitLab: POST merge request webhook JSON to `/gitlab/webhook` with `X-Gitlab-Token` header
 - For GitHub: POST pull request webhook JSON to `/github/webhook` with `X-Hub-Signature-256` header
 - If you need to simulate webhook payloads, save example webhook JSON and use curl or Postman
 
@@ -122,6 +131,8 @@ Tips for local testing:
 - **Error resilience**: Robust handling of API failures
 - **Async processing**: Non-blocking webhook responses
 
+## Screenshots
 Example review comment:
 
-![Example review comment](assets/example_review_comment.png)
+![GitLab](assets/example_review_comment_gitlab.png)
+![GitHub](assets/example_review_comment_github.png)
